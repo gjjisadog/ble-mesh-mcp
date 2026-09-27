@@ -8,6 +8,7 @@
 !/ble_mesh_scan/requirements.txt
 !/ble_mesh_scan/scanner.py
 !/ble_mesh_scan/bootstrap_credential.py
+!/ble_mesh_scan/onboard_device.py
 !/ble_mesh_scan/power_control.py
 !/ble_mesh_scan/mcp_server.py
 !/ble_mesh_scan/toggle_benchmark.py

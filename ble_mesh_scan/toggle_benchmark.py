@@ -8,6 +8,7 @@ response fails. No property command is retried and no key is logged.
 from __future__ import annotations
 
 import asyncio
+import argparse
 import json
 import math
 import statistics
@@ -32,10 +33,11 @@ WATCH_COUNTDOWN_SECONDS = 5.0
 LOG_DIR = Path(__file__).resolve().parent / "logs"
 
 
-async def main() -> int:
-    key = load_gatt_ltmk()
+async def main(device: str = "lab_power") -> int:
+    config = load_device_config(device)
+    key = load_gatt_ltmk(device)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    log_path = LOG_DIR / f"toggle_benchmark_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+    log_path = LOG_DIR / f"toggle_benchmark_{device}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
     write_replies: asyncio.Queue[bytes] = asyncio.Queue()
     read_replies: asyncio.Queue[bytes] = asyncio.Queue()
     measurements: list[dict[str, object]] = []
@@ -209,7 +211,7 @@ async def main() -> int:
 
         try:
             await verify_admin_login(
-                load_device_config().address, key, progress=progress,
+                config.address, key, progress=progress,
                 on_authenticated=run_series,
                 prelogin_notifications={"001A": on_write, "001B": on_read},
             )
@@ -250,7 +252,10 @@ async def main() -> int:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--device", default="lab_power", help="registered local device name")
+    args = parser.parse_args()
     try:
-        raise SystemExit(asyncio.run(main()))
+        raise SystemExit(asyncio.run(main(args.device)))
     except KeyboardInterrupt:
         raise SystemExit(130) from None

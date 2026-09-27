@@ -1,4 +1,4 @@
-"""Local stdio MCP server for the registered lab plug."""
+"""Local stdio MCP server for named plugs of the supported Xiaomi model."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ from typing import Literal
 
 from mcp.server import MCPServer
 
-from ble_mesh_mcp.xiaomi.credentials import load_gatt_ltmk
+from ble_mesh_mcp.xiaomi.credentials import credential_path, load_gatt_ltmk
+from ble_mesh_mcp.xiaomi.device_config import list_device_configs, load_device_config
 from ble_mesh_mcp.xiaomi.local_control import power_cycle, power_off, power_on
 
 
@@ -15,12 +16,15 @@ mcp = MCPServer("ble-lab-power")
 _control_lock = asyncio.Lock()
 
 
-async def _operate(turn_on: bool) -> dict[str, str | int | bool | None]:
-    async with _control_lock:
-        key = load_gatt_ltmk()
-        result = await (power_on(key) if turn_on else power_off(key))
+async def _operate_unlocked(device: str, turn_on: bool) -> dict[str, str | int | bool | None]:
+    config = load_device_config(device)
+    key = load_gatt_ltmk(device)
+    result = await (
+        power_on(key, address=config.address) if turn_on
+        else power_off(key, address=config.address)
+    )
     return {
-        "device": "lab_power",
+        "device": device,
         "requested_state": "on" if turn_on else "off",
         "transport_acked": result.transport_acked,
         "property_status": result.property_status,
@@ -29,21 +33,65 @@ async def _operate(turn_on: bool) -> dict[str, str | int | bool | None]:
     }
 
 
-@mcp.tool()
-async def poweron(device: Literal["lab_power"]) -> dict[str, str | int | bool | None]:
-    """Turn on the registered lab USB plug and verify its MIoT response."""
-    return await _operate(True)
+async def _operate(device: str, turn_on: bool) -> dict[str, str | int | bool | None]:
+    async with _control_lock:
+        return await _operate_unlocked(device, turn_on)
+
+
+async def _operate_many(devices: list[str], turn_on: bool) -> dict[str, object]:
+    if not devices or len(devices) > 16 or len(devices) != len(set(devices)):
+        raise ValueError("provide 1 to 16 distinct device names")
+    for device in devices:
+        load_device_config(device)
+    results: list[dict[str, object]] = []
+    async with _control_lock:
+        for device in devices:
+            try:
+                results.append(await _operate_unlocked(device, turn_on))
+            except Exception as exc:
+                results.append({"device": device, "error_type": type(exc).__name__,
+                                "protocol_verified": False, "physical_state": None})
+    return {"requested_state": "on" if turn_on else "off", "results": results,
+            "all_protocol_verified": all(item["protocol_verified"] is True for item in results)}
 
 
 @mcp.tool()
-async def poweroff(device: Literal["lab_power"]) -> dict[str, str | int | bool | None]:
-    """Turn off the registered lab USB plug and verify its MIoT response."""
-    return await _operate(False)
+async def poweron(device: str) -> dict[str, str | int | bool | None]:
+    """Turn on one named USB plug and verify its MIoT response."""
+    return await _operate(device, True)
+
+
+@mcp.tool()
+async def poweroff(device: str) -> dict[str, str | int | bool | None]:
+    """Turn off one named USB plug and verify its MIoT response."""
+    return await _operate(device, False)
+
+
+@mcp.tool()
+async def poweron_many(devices: list[str]) -> dict[str, object]:
+    """Turn on several named plugs, one BLE operation at a time."""
+    return await _operate_many(devices, True)
+
+
+@mcp.tool()
+async def poweroff_many(devices: list[str]) -> dict[str, object]:
+    """Turn off several named plugs, one BLE operation at a time."""
+    return await _operate_many(devices, False)
+
+
+@mcp.tool()
+async def list_devices() -> dict[str, object]:
+    """List locally configured plugs and whether each has a stored credential."""
+    return {"devices": [
+        {"name": name, "model": config.model,
+         "credential_ready": credential_path(name).is_file()}
+        for name, config in sorted(list_device_configs().items())
+    ]}
 
 
 @mcp.tool()
 async def powercycle(
-    device: Literal["lab_power"],
+    device: str,
     off_seconds: float = 5.0,
     mode: Literal["auto", "manual", "auto_or_manual"] = "auto_or_manual",
     reason: Literal["after_flash", "connection_recovery"] = "after_flash",
@@ -56,7 +104,6 @@ async def powercycle(
     """
     if not 1.0 <= off_seconds <= 60.0:
         raise ValueError("off_seconds must be between 1 and 60")
-
     def manual(manual_reason: str) -> dict[str, object]:
         return {
             "device": device,
@@ -78,8 +125,11 @@ async def powercycle(
 
     async with _control_lock:
         try:
-            key = load_gatt_ltmk()
-            result = await power_cycle(key, off_seconds=off_seconds)
+            config = load_device_config(device)
+            key = load_gatt_ltmk(device)
+            result = await power_cycle(
+                key, off_seconds=off_seconds, address=config.address,
+            )
         except Exception as exc:
             if mode == "auto":
                 raise

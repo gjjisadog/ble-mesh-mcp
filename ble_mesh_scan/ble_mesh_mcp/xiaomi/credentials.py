@@ -11,6 +11,8 @@ import os
 from ctypes import wintypes
 from pathlib import Path
 
+from .device_config import config_dir, validate_name
+
 
 class _DataBlob(ctypes.Structure):
     _fields_ = [
@@ -45,17 +47,20 @@ def _crypt(data: bytes, *, protect: bool) -> bytes:
         kernel32.LocalFree(ctypes.cast(destination.pbData, ctypes.c_void_p))
 
 
-def credential_path() -> Path:
+def credential_path(device: str = "lab_power") -> Path:
     # Packaged desktop apps can redirect LOCALAPPDATA to their private cache.
     # The user-profile root is stable across ordinary and packaged MCP hosts.
-    return Path.home() / ".ble-mesh-mcp" / "lab_power.dpapi"
+    validate_name(device)
+    if device == "lab_power":
+        return config_dir() / "lab_power.dpapi"  # Existing credential stays valid.
+    return config_dir() / "credentials" / f"{device}.dpapi"
 
 
-def save_gatt_ltmk(key: bytes) -> Path:
+def save_gatt_ltmk(key: bytes, device: str = "lab_power") -> Path:
     if len(key) != 32:
         raise ValueError("GATT_LTMK must be exactly 32 bytes")
     encrypted = _crypt(bytes(key), protect=True)
-    path = credential_path()
+    path = credential_path(device)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
     temporary.write_bytes(encrypted)
@@ -63,11 +68,11 @@ def save_gatt_ltmk(key: bytes) -> Path:
     return path
 
 
-def load_gatt_ltmk() -> bytes:
-    path = credential_path()
+def load_gatt_ltmk(device: str = "lab_power") -> bytes:
+    path = credential_path(device)
     if not path.is_file():
         raise FileNotFoundError(
-            "lab_power credential is missing; run bootstrap_credential.py first"
+            f"credential for {device!r} is missing; run onboard_device.py or bootstrap_credential.py"
         )
     key = _crypt(path.read_bytes(), protect=False)
     if len(key) != 32:

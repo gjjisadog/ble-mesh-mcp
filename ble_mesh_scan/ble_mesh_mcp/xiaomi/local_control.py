@@ -145,17 +145,19 @@ async def _set_power(
     return result
 
 
-async def power_on(gatt_ltmk: bytes) -> PowerResult:
+async def power_on(gatt_ltmk: bytes, *, address: str | None = None) -> PowerResult:
     """Set the lab plug's siid=2/piid=1 property to true once."""
-    return await _set_power(gatt_ltmk, value=True)
+    return await _set_power(gatt_ltmk, value=True, address=address)
 
 
-async def power_off(gatt_ltmk: bytes) -> PowerResult:
+async def power_off(gatt_ltmk: bytes, *, address: str | None = None) -> PowerResult:
     """Set the lab plug's siid=2/piid=1 property to false once."""
-    return await _set_power(gatt_ltmk, value=False)
+    return await _set_power(gatt_ltmk, value=False, address=address)
 
 
-async def power_cycle(gatt_ltmk: bytes, *, off_seconds: float = 5.0) -> PowerCycleResult:
+async def power_cycle(
+    gatt_ltmk: bytes, *, off_seconds: float = 5.0, address: str | None = None,
+) -> PowerCycleResult:
     """Turn OFF, hold for at least off_seconds, then restore ON in one login.
 
     After an OFF attempt, an ON attempt is made even if OFF confirmation or the
@@ -257,7 +259,7 @@ async def power_cycle(gatt_ltmk: bytes, *, off_seconds: float = 5.0) -> PowerCyc
         cycle = PowerCycleResult(off=off, on=on, off_hold_seconds=held)
 
     await verify_admin_login(
-        load_device_config().address, gatt_ltmk, on_authenticated=run_cycle,
+        address or load_device_config().address, gatt_ltmk, on_authenticated=run_cycle,
         prelogin_notifications={"001A": on_write, "001B": on_read},
     )
     if cycle is None:

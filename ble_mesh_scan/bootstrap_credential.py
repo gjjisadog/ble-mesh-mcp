@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import os
 import secrets
 import tempfile
@@ -16,7 +17,8 @@ from ble_mesh_mcp.xiaomi.credentials import save_gatt_ltmk
 from ble_mesh_mcp.xiaomi.device_config import load_device_config
 
 
-async def main() -> None:
+async def main(device: str = "lab_power") -> None:
+    config = load_device_config(device)
     qr_path = Path(tempfile.gettempdir()) / f"ble_mesh_credential_{secrets.token_hex(8)}.png"
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=75)) as session:
         ready = asyncio.Event()
@@ -29,14 +31,17 @@ async def main() -> None:
                 os.startfile(qr_path)
         ready_task.cancel()
         service = await task
-        key = await XiaomiMiioBleMeshCloud(service).get_gatt_ltmk(load_device_config().did)
-        path = save_gatt_ltmk(key)
+        key = await XiaomiMiioBleMeshCloud(service).get_gatt_ltmk(config.did)
+        path = save_gatt_ltmk(key, device)
     print(f"CREDENTIAL_SAVED_DPAPI {path.resolve()}", flush=True)
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--device", default="lab_power", help="registered local device name")
+    args = parser.parse_args()
     try:
-        asyncio.run(main())
+        asyncio.run(main(args.device))
     except KeyboardInterrupt:
         raise SystemExit(130) from None
     except Exception as exc:
