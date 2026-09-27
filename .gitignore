@@ -1,0 +1,23 @@
+# Public release is an allowlist. Captures, certificates and research notes stay local.
+/*
+!/.gitignore
+!/README.md
+!/ble_mesh_scan/
+/ble_mesh_scan/*
+!/ble_mesh_scan/README.md
+!/ble_mesh_scan/requirements.txt
+!/ble_mesh_scan/scanner.py
+!/ble_mesh_scan/bootstrap_credential.py
+!/ble_mesh_scan/power_control.py
+!/ble_mesh_scan/mcp_server.py
+!/ble_mesh_scan/toggle_benchmark.py
+!/ble_mesh_scan/ble_mesh_mcp/
+!/ble_mesh_scan/tests/
+
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/logs/
+**/*.dpapi
+**/.env*
+**/lab_power.json
